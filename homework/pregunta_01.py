@@ -71,3 +71,60 @@ def pregunta_01():
 
 
     """
+    import os
+    import zipfile
+    from pathlib import Path
+
+    try:
+        import pandas as pd
+    except Exception:  # pragma: no cover - pandas should be available in the test environment
+        raise
+
+    repo_root = Path(__file__).resolve().parents[1]
+
+    zip_path = repo_root / "files" / "input.zip"
+    # Extract zip into repo root (will create `input/` folder)
+    if not zip_path.exists():
+        raise FileNotFoundError(f"Expected zip file at {zip_path}")
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(path=repo_root)
+
+    out_dir = repo_root / "files" / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def build_dataset(split_name: str):
+        rows = []
+        base = repo_root / "input" / split_name
+        if not base.exists():
+            # nothing to do
+            return pd.DataFrame(columns=["phrase", "target"])
+
+        # detect categories (directories) and sort for determinism
+        categories = [p.name for p in base.iterdir() if p.is_dir()]
+        categories = sorted(categories)
+
+        for cat in categories:
+            cat_dir = base / cat
+            # sort file names for determinism
+            files = sorted([p for p in cat_dir.iterdir() if p.is_file()])
+            for fpath in files:
+                try:
+                    text = fpath.read_text(encoding="utf-8").strip()
+                except Exception:
+                    # fallback with latin-1 if encoding differs
+                    text = fpath.read_text(encoding="latin-1").strip()
+
+                # replace newlines with spaces so phrase is a single line
+                text = " ".join(text.splitlines())
+                rows.append({"phrase": text, "target": cat})
+
+        return pd.DataFrame(rows, columns=["phrase", "target"]) 
+
+    train_df = build_dataset("train")
+    test_df = build_dataset("test")
+
+    train_df.to_csv(out_dir / "train_dataset.csv", index=False)
+    test_df.to_csv(out_dir / "test_dataset.csv", index=False)
+
+    
